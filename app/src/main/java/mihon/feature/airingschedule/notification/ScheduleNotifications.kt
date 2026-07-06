@@ -44,9 +44,10 @@ object ScheduleNotifications {
         val triggerAtMillis = entry.airingAt * 1000L
         runCatching {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            // Only persist the key after a successful registration so that a future call
+            // can retry if the platform rejected the alarm (e.g. exact-alarm restrictions).
+            schedulePreferences.scheduledAlarmKeys().set(scheduled + key)
         }
-
-        schedulePreferences.scheduledAlarmKeys().set(scheduled + key)
     }
 
     /** Cancels a single previously-scheduled alarm for [entry], if any. */

@@ -140,28 +140,42 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         weekEnd: LocalDate? = mutableState.value.weekEndDate,
     ) {
         val showOnlyFavorites = schedulePrefs.showOnlyFavoriteSources().get()
+        val filterByAvailability = schedulePrefs.filterBySourceAvailability().get()
         val favoriteIds = schedulePrefs.favoriteSourceIds().get()
+        val showAdult = schedulePrefs.showAdultContent().get()
         val titleLang = schedulePrefs.titleLanguage().get()
         val autoAdd = schedulePrefs.autoAddFromPinnedSources().get()
         val pinnedSources = sourcePreferences.pinnedSources().get()
         val zone = ZoneId.systemDefault()
 
-        val filtered = entries.filter { _ ->
-            if (showOnlyFavorites && favoriteIds.isEmpty()) return@filter true
+        // Pre-compute whether any favourite/pinned source has a tracked upload delay,
+        // which serves as a proxy for "this source type carries schedule anime".
+        val anyFavoriteTracked = favoriteIds.any { it in delays }
+        val priorityDelay = getPriorityDelay(delays, pinnedSources, favoriteIds)
+
+        val filtered = entries.filter { entry ->
+            // Re-apply adult-content filter in case the preference changed since last fetch.
+            if (!showAdult && entry.isAdult) return@filter false
+            // Source filters only apply when the user has configured favourite sources.
+            if (favoriteIds.isNotEmpty()) {
+                // showOnlyFavoriteSources: keep entries only when at least one favourite
+                // source has a tracked upload delay (proxy: it carries schedule-type anime).
+                if (showOnlyFavorites && !anyFavoriteTracked) return@filter false
+                // filterBySourceAvailability: keep entries only when a priority delay can
+                // be resolved, meaning at least one pinned/favourite source is known to
+                // upload schedule-type anime.
+                if (filterByAvailability && priorityDelay == null) return@filter false
+            }
             true
         }
 
         val grouped = filtered.groupBy { entry ->
-            val priorityDelay = getPriorityDelay(delays, pinnedSources, favoriteIds)
             val airTime = if (priorityDelay != null) {
                 entry.airingAt + (priorityDelay * 60)
             } else {
                 entry.airingAt
             }
-            ZonedDateTime.ofInstant(
-                Instant.ofEpochSecond(airTime),
-                zone,
-            ).dayOfWeek
+            ZonedDateTime.ofInstant(Instant.ofEpochSecond(airTime), zone).dayOfWeek
         }
 
         mutableState.update {

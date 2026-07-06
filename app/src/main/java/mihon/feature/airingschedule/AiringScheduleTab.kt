@@ -74,11 +74,25 @@ data object AiringScheduleTab : Tab {
 
     override val options: TabOptions
         @Composable
-        get() = TabOptions(
-            index = 3u,
-            title = "Schedule",
-            icon = rememberVectorPainter(Icons.Outlined.DateRange),
-        )
+        get() {
+            // Index must match the position produced by NavStyle.tabs after the moreTab is
+            // removed.  Base order: Library(0) Updates(1) History(2) Schedule(3) Browse(4) More(5).
+            val index: UShort = when (currentNavigationStyle()) {
+                // Updates removed → Library(0) History(1) Schedule(2) Browse(3) More(4)
+                eu.kanade.domain.ui.model.NavStyle.MOVE_UPDATES_TO_MORE -> 2u
+                // History removed → Library(0) Updates(1) Schedule(2) Browse(3) More(4)
+                eu.kanade.domain.ui.model.NavStyle.MOVE_HISTORY_TO_MORE -> 2u
+                // Browse removed → Library(0) Updates(1) History(2) Schedule(3) More(4)
+                eu.kanade.domain.ui.model.NavStyle.MOVE_BROWSE_TO_MORE -> 3u
+                // Schedule itself is in More; use 4u (slot is unused in the nav bar)
+                eu.kanade.domain.ui.model.NavStyle.MOVE_SCHEDULE_TO_MORE -> 4u
+            }
+            return TabOptions(
+                index = index,
+                title = "Schedule",
+                icon = rememberVectorPainter(Icons.Outlined.DateRange),
+            )
+        }
 
     override suspend fun onReselect(navigator: Navigator) {}
 
