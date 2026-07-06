@@ -295,7 +295,7 @@ private fun formatCountdown(airingAtEpochSeconds: Long): String? {
     val diff = airingAtEpochSeconds - nowSeconds
     if (diff <= 0) return null
     val hours = diff / 3600
-    val minutes = (diff % 3600) / 60
+    val minutes = diff % 3600 / 60
     return when {
         hours >= 24 -> {
             val days = hours / 24
