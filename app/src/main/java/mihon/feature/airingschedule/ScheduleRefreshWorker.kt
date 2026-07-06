@@ -58,7 +58,7 @@ class ScheduleRefreshWorker(
             // This prevents re-recording the same episode on every subsequent run, which
             // would cause the running average to drift upward indefinitely.
             val lastCheckTime = schedulePrefs.lastDelayCheckTime().get()
-            val windowStart = if (lastCheckTime > 0L) lastCheckTime else (nowEpoch - 24 * 3600)
+            val windowStart = if (lastCheckTime > 0L) lastCheckTime else nowEpoch - 24 * 3600
 
             entries
                 .filter { it.airingAt in windowStart..nowEpoch }
