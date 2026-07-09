@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -223,13 +224,16 @@ private fun AirTimeBadgeRow(
     hasAired: Boolean,
     officialAirTime: String,
     countdown: String?,
+    // Kept for source compatibility with callers/settings that compute an estimated
+    // upload time; intentionally not rendered as its own badge anymore, since a 3rd
+    // badge crowded the row and squeezed the episode label into a vertical wrap.
     expectedUploadTime: String?,
     episode: Int,
     totalEpisodes: Int?,
 ) {
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Surface(
             shape = RoundedCornerShape(6.dp),
@@ -258,25 +262,14 @@ private fun AirTimeBadgeRow(
             }
         }
 
-        if (expectedUploadTime != null && expectedUploadTime != officialAirTime) {
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-                Text(
-                    text = "Src ~$expectedUploadTime",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                )
-            }
-        }
-
         val episodeText = if (totalEpisodes != null) "Ep $episode / $totalEpisodes" else "Ep $episode"
         Text(
             text = episodeText,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(start = 2.dp),
         )
     }
 }
