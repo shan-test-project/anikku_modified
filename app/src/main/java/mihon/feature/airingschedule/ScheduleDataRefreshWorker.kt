@@ -95,10 +95,10 @@ class ScheduleDataRefreshWorker(
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         }
 
-        fun readCache(context: Context): ScheduleCacheData? {
-            return try {
+        suspend fun readCache(context: Context): ScheduleCacheData? = withContext(Dispatchers.IO) {
+            try {
                 val file = context.cacheFile()
-                if (!file.exists()) return null
+                if (!file.exists()) return@withContext null
                 cacheJson.decodeFromString(ScheduleCacheData.serializer(), file.readText())
             } catch (_: Exception) {
                 null
@@ -110,20 +110,21 @@ class ScheduleDataRefreshWorker(
          * can be used as a fallback if a later refresh attempt fails. Safe to call regardless of
          * whether auto-refresh is enabled.
          */
-        fun writeCache(context: Context, weekStartEpoch: Long, entries: List<AiringScheduleEntry>) {
-            try {
-                val cacheData = ScheduleCacheData(
-                    fetchedAt = System.currentTimeMillis(),
-                    weekStartEpoch = weekStartEpoch,
-                    entries = entries.map { it.toCached() },
-                )
-                val file = context.cacheFile()
-                file.parentFile?.mkdirs()
-                file.writeText(cacheJson.encodeToString(ScheduleCacheData.serializer(), cacheData))
-            } catch (_: Exception) {
-                // Best-effort cache write; failing to persist shouldn't break the current load.
+        suspend fun writeCache(context: Context, weekStartEpoch: Long, entries: List<AiringScheduleEntry>) =
+            withContext(Dispatchers.IO) {
+                try {
+                    val cacheData = ScheduleCacheData(
+                        fetchedAt = System.currentTimeMillis(),
+                        weekStartEpoch = weekStartEpoch,
+                        entries = entries.map { it.toCached() },
+                    )
+                    val file = context.cacheFile()
+                    file.parentFile?.mkdirs()
+                    file.writeText(cacheJson.encodeToString(ScheduleCacheData.serializer(), cacheData))
+                } catch (_: Exception) {
+                    // Best-effort cache write; failing to persist shouldn't break the current load.
+                }
             }
-        }
 
         fun isCacheFresh(cacheData: ScheduleCacheData, frequency: SchedulePreferences.AutoRefreshFrequency): Boolean {
             val maxAge = frequency.toDays() * 24L * 60L * 60L * 1000L

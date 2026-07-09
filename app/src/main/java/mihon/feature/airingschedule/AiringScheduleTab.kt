@@ -51,7 +51,9 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import kotlinx.coroutines.launch
 import mihon.feature.airingschedule.components.BellNotifyState
 import mihon.feature.airingschedule.components.ScheduleAnimeCard
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 import java.time.DayOfWeek
@@ -118,7 +120,7 @@ data object AiringScheduleTab : Tab {
                     title = {
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
-                                text = "Airing Schedule",
+                                text = stringResource(MR.strings.label_airing_schedule),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -364,7 +366,7 @@ private fun ScheduleErrorContent(
                     contentDescription = null,
                     modifier = Modifier.padding(end = 6.dp),
                 )
-                Text("Retry")
+                Text(stringResource(MR.strings.action_retry))
             }
         }
     }

@@ -54,6 +54,24 @@ class UploadDelayTracker {
         Log.d("UploadDelayTracker", "Source $sourceId delay updated to ${updated}min")
     }
 
+    /**
+     * Batch-records observations for multiple (sourceId, delayMinutes) pairs in a single
+     * read → update → write cycle, avoiding repeated disk I/O for each entry.
+     */
+    fun recordObservations(observations: List<Pair<String, Long>>) {
+        if (observations.isEmpty()) return
+        val delays = getDelays().toMutableMap()
+        for ((sourceId, observedDelayMinutes) in observations) {
+            val prev = delays[sourceId]
+            delays[sourceId] = if (prev == null) {
+                observedDelayMinutes
+            } else {
+                ((0.6 * prev) + (0.4 * observedDelayMinutes)).toLong()
+            }
+        }
+        saveDelays(delays)
+    }
+
     /** Clears the stored delay for a source. */
     fun clearDelay(sourceId: String) {
         val delays = getDelays().toMutableMap()

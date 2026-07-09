@@ -60,22 +60,23 @@ class ScheduleRefreshWorker(
             val lastCheckTime = schedulePrefs.lastDelayCheckTime().get()
             val windowStart = if (lastCheckTime > 0L) lastCheckTime else nowEpoch - 24 * 3600
 
+            // Collect all (sourceId, delayMinutes) pairs first and flush in one batch to
+            // avoid repeated disk reads/writes per entry. The 15-minute floor filters out
+            // near-zero observations that almost certainly precede the source upload — this
+            // is still a time-based approximation; querying source catalogs directly would
+            // require source-specific API calls beyond the scope of a background worker.
+            val observations = mutableListOf<Pair<String, Long>>()
             entries
                 .filter { it.airingAt in windowStart..nowEpoch }
                 .forEach { entry ->
                     val delayMinutes = (nowEpoch - entry.airingAt) / 60L
-                    // Require at least 15 minutes elapsed before recording. Near-zero values
-                    // almost certainly mean the source hasn't had a chance to upload yet, so
-                    // recording them would skew the running average downward inaccurately.
-                    // This is still an approximation — we check source availability via time
-                    // elapsed rather than querying the source catalog directly, which would
-                    // require source-specific API calls beyond the scope of this worker.
                     if (delayMinutes in 15L..(24 * 60)) {
                         favoriteSourceIds.forEach { sourceId ->
-                            delayTracker.recordObservation(sourceId, delayMinutes)
+                            observations.add(sourceId to delayMinutes)
                         }
                     }
                 }
+            delayTracker.recordObservations(observations)
 
             schedulePrefs.lastDelayCheckTime().set(nowEpoch)
             Result.success()
