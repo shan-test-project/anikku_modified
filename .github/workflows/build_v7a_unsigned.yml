@@ -1,0 +1,88 @@
+name: Build v7a (unsigned)
+# Manual/automatic build of an installable, debug-signed armeabi-v7a APK for anikku_modified.
+# This workflow was added specifically for the anikku_modified fork because the official
+# release-signing secrets (SIGNING_KEY, ALIAS, KEY_STORE_PASSWORD, KEY_PASSWORD) and the
+# Google services secrets live only in the upstream Anikku repo and cannot be exported via
+# the GitHub API, so this build produces a debug-signed (unsigned release-config) APK instead.
+
+on:
+  push:
+    tags:
+      - v7a*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-v7a:
+    name: Build armeabi-v7a APK
+    runs-on: 'ubuntu-24.04'
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Determine version tag
+        id: get_tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            version_tag=$(echo "${GITHUB_REF/refs\/tags\//}" | sed -r 's/[-\/]+/_/g')
+          else
+            version_tag="v7a_$(date +%Y%m%d%H%M%S)"
+          fi
+          echo "VERSION_TAG=$version_tag" >> $GITHUB_OUTPUT
+
+      - name: Build debug APK (armeabi-v7a)
+        run: ./gradlew assembleDebug -Pinclude-telemetry=false -Penable-updater=false
+
+      - name: Rename APK
+        id: rename
+        run: |
+          set -e
+          apk=$(find app/build/outputs/apk/debug -iname "*armeabi-v7a*debug*.apk" | head -n1)
+          if [ -z "$apk" ]; then
+            apk=$(find app/build/outputs/apk/debug -iname "*.apk" | head -n1)
+          fi
+          out="Anikku_modified-armeabi-v7a-${{ steps.get_tag.outputs.VERSION_TAG }}.apk"
+          cp "$apk" "$out"
+          echo "APK_PATH=$out" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.rename.outputs.APK_PATH }}
+          path: ${{ steps.rename.outputs.APK_PATH }}
+          retention-days: 14
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v7a')
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2.3.3
+        with:
+          tag_name: ${{ steps.get_tag.outputs.VERSION_TAG }}
+          name: Anikku Modified ${{ steps.get_tag.outputs.VERSION_TAG }} (armeabi-v7a, debug-signed)
+          body: |
+            Unsigned/debug-signed armeabi-v7a build of anikku_modified.
+
+            Includes:
+            - Full Airing Schedule tab, settings and notifications
+            - Bottom navigation reorder (Updates moved into More, History is 2nd)
+
+            Note: this build is debug-signed, not signed with the official Anikku release key,
+            because the official signing secrets are not available outside the upstream repo.
+          files: |
+            ${{ steps.rename.outputs.APK_PATH }}
