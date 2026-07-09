@@ -47,16 +47,19 @@ jobs:
           fi
           echo "VERSION_TAG=$version_tag" >> $GITHUB_OUTPUT
 
-      - name: Build debug APK (armeabi-v7a)
-        run: ./gradlew assembleDebug -Pinclude-telemetry=false -Penable-updater=false
+      - name: Build preview APK (debug-signed, armeabi-v7a)
+        # Uses the "preview" build type: it matches the app.anikku.beta entry already
+        # present in the checked-in google-services.json and is debug-signed, so it
+        # builds and installs without needing the official release-signing secrets.
+        run: ./gradlew assemblePreview -Pinclude-telemetry=false -Penable-updater=false
 
       - name: Rename APK
         id: rename
         run: |
           set -e
-          apk=$(find app/build/outputs/apk/debug -iname "*armeabi-v7a*debug*.apk" | head -n1)
+          apk=$(find app/build/outputs/apk/preview -iname "*armeabi-v7a*.apk" | head -n1)
           if [ -z "$apk" ]; then
-            apk=$(find app/build/outputs/apk/debug -iname "*.apk" | head -n1)
+            apk=$(find app/build/outputs/apk/preview -iname "*.apk" | head -n1)
           fi
           out="Anikku_modified-armeabi-v7a-${{ steps.get_tag.outputs.VERSION_TAG }}.apk"
           cp "$apk" "$out"
