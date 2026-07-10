@@ -157,6 +157,10 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         val librarySourcesByTitle = mutableState.value.librarySourcesByTitle
         val zone = ZoneId.systemDefault()
         val nowEpoch = System.currentTimeMillis() / 1000L
+        // Source filters should apply for either favourite or pinned sources — a user who
+        // only pins sources from Browse (without also marking them "favourite" here) still
+        // expects "show only my sources" / "filter by availability" to work.
+        val configuredSources = favoriteIds + pinnedSources
 
         // Per-entry: the actual favourite/pinned source ids that carry *this specific* anime,
         // resolved via the library-anime title match (bounded to anime the user already added —
@@ -170,7 +174,7 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
                 entry.titleNative,
             ).map { it.trim().lowercase() }
             val candidateSources = titleCandidates.flatMap { librarySourcesByTitle[it].orEmpty() }.toSet()
-            return candidateSources.intersect(favoriteIds + pinnedSources)
+            return candidateSources.intersect(configuredSources)
         }
 
         // Per-entry: the delay-adjusted air time using only that entry's own matched sources
@@ -190,8 +194,8 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         val filtered = entries.filter { entry ->
             // Re-apply adult-content filter in case the preference changed since last fetch.
             if (!showAdult && entry.isAdult) return@filter false
-            // Source filters only apply when the user has configured favourite sources.
-            if (favoriteIds.isNotEmpty() && (showOnlyFavorites || filterByAvailability)) {
+            // Source filters only apply when the user has configured favourite/pinned sources.
+            if (configuredSources.isNotEmpty() && (showOnlyFavorites || filterByAvailability)) {
                 val matchedSources = matchedSourcesFor(entry)
                 // showOnlyFavoriteSources: keep entries only when this specific anime is
                 // confirmed to be on one of the user's favourite/pinned sources.
@@ -210,7 +214,7 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         }
 
         val grouped = filtered.groupBy { entry ->
-            val matchedSources = if (favoriteIds.isNotEmpty()) matchedSourcesFor(entry) else emptySet()
+            val matchedSources = if (configuredSources.isNotEmpty()) matchedSourcesFor(entry) else emptySet()
             val priorityDelay = priorityDelayFor(matchedSources)
             val airTime = if (priorityDelay != null) {
                 entry.airingAt + (priorityDelay * 60)
