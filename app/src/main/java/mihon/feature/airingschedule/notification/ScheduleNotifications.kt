@@ -29,7 +29,7 @@ object ScheduleNotifications {
     // mutating access goes through this mutex.
     private val keysMutex = Mutex()
 
-    private inline fun <T> withKeysLock(block: () -> T): T = runBlocking { keysMutex.withLock { block() } }
+    private inline fun <T> withKeysLock(crossinline block: () -> T): T = runBlocking { keysMutex.withLock { block() } }
 
     fun alarmKey(mediaId: Int, episode: Int): String = "$mediaId:$episode"
 
