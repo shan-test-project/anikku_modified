@@ -1,0 +1,124 @@
+name: Build v7a (stable)
+# Builds a stable, release-optimized (minified, shrunk resources, no debug flags) armeabi-v7a
+# APK for anikku_modified, self-signed with a throwaway keystore generated during the run.
+#
+# This differs from build_v7a_unsigned.yml, which uses the "preview" build type (debug-signed,
+# not minified, matches the beta Firebase config). This workflow builds the actual "release"
+# build type used for official Anikku releases, just signed with a generated key instead of the
+# official one — those signing secrets (SIGNING_KEY, ALIAS, KEY_STORE_PASSWORD, KEY_PASSWORD)
+# and the Google services secrets live only in the upstream Anikku repo and cannot be exported
+# via the GitHub API. Telemetry/the in-app updater are left disabled (not passed as Gradle
+# properties) so the build doesn't require a google-services.json at all.
+
+on:
+  push:
+    tags:
+      - v7a-stable*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-v7a-stable:
+    name: Build stable armeabi-v7a APK
+    runs-on: 'ubuntu-24.04'
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Determine version tag
+        id: get_tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            version_tag=$(echo "${GITHUB_REF/refs\/tags\//}" | sed -r 's/[-\/]+/_/g')
+          else
+            version_tag="v7a_stable_$(date +%Y%m%d%H%M%S)"
+          fi
+          echo "VERSION_TAG=$version_tag" >> $GITHUB_OUTPUT
+
+      - name: Build release APK (armeabi-v7a split, minified/shrunk, unsigned)
+        # No -Pinclude-telemetry / -Penable-updater flags: leaving them unset (rather than
+        # passing =false) is what actually disables them, since Gradle's hasProperty() check
+        # only cares whether the property was passed at all, not its value. This also means the
+        # build never needs a google-services.json / client_secrets.json.
+        run: ./gradlew assembleRelease
+
+      - name: Generate throwaway signing key
+        id: keygen
+        run: |
+          keytool -genkeypair -v \
+            -keystore release.keystore \
+            -alias anikku_modified \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass anikku_modified -keypass anikku_modified \
+            -dname "CN=anikku_modified, OU=anikku_modified, O=anikku_modified, L=NA, S=NA, C=NA"
+          echo "KEYSTORE_BASE64=$(base64 -w0 release.keystore)" >> $GITHUB_OUTPUT
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
+        id: sign
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ steps.keygen.outputs.KEYSTORE_BASE64 }}
+          alias: anikku_modified
+          keyStorePassword: anikku_modified
+          keyPassword: anikku_modified
+        env:
+          BUILD_TOOLS_VERSION: '35.0.1'
+
+      - name: Rename APK
+        id: rename
+        run: |
+          set -e
+          apk=$(find app/build/outputs/apk/release -iname "*armeabi-v7a*signed*.apk" | head -n1)
+          if [ -z "$apk" ]; then
+            apk=$(find app/build/outputs/apk/release -iname "*armeabi-v7a*.apk" | head -n1)
+          fi
+          out="Anikku_modified-armeabi-v7a-stable-${{ steps.get_tag.outputs.VERSION_TAG }}.apk"
+          cp "$apk" "$out"
+          echo "APK_PATH=$out" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.rename.outputs.APK_PATH }}
+          path: ${{ steps.rename.outputs.APK_PATH }}
+          retention-days: 30
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v7a-stable')
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2.3.3
+        with:
+          tag_name: ${{ steps.get_tag.outputs.VERSION_TAG }}
+          name: Anikku Modified ${{ steps.get_tag.outputs.VERSION_TAG }} (armeabi-v7a, stable)
+          body: |
+            Stable, release-optimized (minified, shrunk resources, no debug flags) armeabi-v7a
+            build of anikku_modified, self-signed with a throwaway key generated during this
+            build.
+
+            Includes:
+            - Full Airing Schedule tab, settings and notifications
+            - Custom manual upload-delay override (Refresh interval → Custom)
+            - Bottom navigation reorder (Updates moved into More, History is 2nd)
+
+            Note: not signed with the official Anikku release key (those secrets live only in
+            the upstream repo), so it can't be installed as an update over an
+            officially-signed Anikku install — uninstall any existing Anikku app first.
+          files: |
+            ${{ steps.rename.outputs.APK_PATH }}

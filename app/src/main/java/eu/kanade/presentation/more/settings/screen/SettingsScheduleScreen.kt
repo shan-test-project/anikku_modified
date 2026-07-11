@@ -44,6 +44,8 @@ object SettingsScheduleScreen : SearchableSettings {
         val uploadDelayEnabled by uploadDelayEnabledPref.changes().collectAsState(initial = uploadDelayEnabledPref.get())
         val uploadDelayIntervalPref = schedulePreferences.uploadDelayRefreshInterval()
         val uploadDelayInterval by uploadDelayIntervalPref.changes().collectAsState(initial = uploadDelayIntervalPref.get())
+        val customUploadDelayPref = schedulePreferences.customUploadDelayMinutes()
+        val customUploadDelay by customUploadDelayPref.changes().collectAsState(initial = customUploadDelayPref.get())
 
         LaunchedEffect(autoRefreshEnabled, autoRefreshFrequency) {
             if (autoRefreshEnabled) {
@@ -89,6 +91,7 @@ object SettingsScheduleScreen : SearchableSettings {
             SchedulePreferences.UploadDelayInterval.TWO_HOURS to "Every 2 hours",
             SchedulePreferences.UploadDelayInterval.SIX_HOURS to "Every 6 hours",
             SchedulePreferences.UploadDelayInterval.TWELVE_HOURS to "Every 12 hours",
+            SchedulePreferences.UploadDelayInterval.CUSTOM to "Custom delay (set your own minutes)",
             SchedulePreferences.UploadDelayInterval.NEVER to "Never (manual only)",
         ).toImmutableMap()
 
@@ -135,11 +138,6 @@ object SettingsScheduleScreen : SearchableSettings {
                         subtitle = "Off by default. When on, only shows anime that are already in your library from one of your selected favorite/pinned sources.",
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        pref = schedulePreferences.filterBySourceAvailability(),
-                        title = "Filter by source availability",
-                        subtitle = "Off by default. When on, only shows episodes once that anime's matched favorite/pinned source has actually made the episode available (using the learned upload delay).",
-                    ),
-                    Preference.PreferenceItem.SwitchPreference(
                         pref = schedulePreferences.autoAddFromPinnedSources(),
                         title = "Auto-add via pinned sources",
                         subtitle = "When tapping the bookmark button, search only in your pinned sources (from Browse) using priority order — 1st pinned gets highest priority",
@@ -159,6 +157,13 @@ object SettingsScheduleScreen : SearchableSettings {
                         title = "Refresh interval",
                         subtitle = "How often to re-check and continuously refine the learned upload delay per source using a running average",
                         entries = intervalOptions,
+                    ),
+                    Preference.PreferenceItem.EditTextPreference(
+                        pref = schedulePreferences.customUploadDelayMinutes(),
+                        title = "Custom delay (minutes)",
+                        subtitle = "Only used when Refresh interval is set to Custom. A fixed number of minutes added to the official air time — shifts the expected upload time and countdown shown for every episode, in place of the auto-learned delay. Negative values mean early.",
+                        enabled = uploadDelayInterval == SchedulePreferences.UploadDelayInterval.CUSTOM,
+                        onValueChanged = { it.trim().toLongOrNull()?.let { minutes -> minutes in -24 * 60..24 * 60 } ?: false },
                     ),
                 ),
             ),

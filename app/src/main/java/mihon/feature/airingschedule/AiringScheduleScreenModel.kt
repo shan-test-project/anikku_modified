@@ -61,11 +61,12 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         screenModelScope.launch {
             combine(
                 schedulePrefs.showOnlyFavoriteSources().changes(),
-                schedulePrefs.filterBySourceAvailability().changes(),
                 schedulePrefs.favoriteSourceIds().changes(),
                 schedulePrefs.showAdultContent().changes(),
                 schedulePrefs.titleLanguage().changes(),
                 schedulePrefs.autoAddFromPinnedSources().changes(),
+                schedulePrefs.uploadDelayRefreshInterval().changes(),
+                schedulePrefs.customUploadDelayMinutes().changes(),
             ) { _ -> Unit }.collectLatest {
                 if (hasLoaded) applyFilters()
             }
@@ -148,7 +149,6 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         weekEnd: LocalDate? = mutableState.value.weekEndDate,
     ) {
         val showOnlyFavorites = schedulePrefs.showOnlyFavoriteSources().get()
-        val filterByAvailability = schedulePrefs.filterBySourceAvailability().get()
         val favoriteIds = schedulePrefs.favoriteSourceIds().get()
         val showAdult = schedulePrefs.showAdultContent().get()
         val titleLang = schedulePrefs.titleLanguage().get()
@@ -156,10 +156,20 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         val pinnedSources = sourcePreferences.pinnedSources().get()
         val librarySourcesByTitle = mutableState.value.librarySourcesByTitle
         val zone = ZoneId.systemDefault()
-        val nowEpoch = System.currentTimeMillis() / 1000L
+        // Manual override: when the user has picked "Custom" for the upload-delay refresh
+        // interval, they've supplied a fixed delay themselves — that takes priority over any
+        // auto-learned per-source delay when computing expected upload time / countdown.
+        val manualDelayMinutes: Long? = if (
+            schedulePrefs.uploadDelayEnabled().get() &&
+            schedulePrefs.uploadDelayRefreshInterval().get() == SchedulePreferences.UploadDelayInterval.CUSTOM
+        ) {
+            SchedulePreferences.parseCustomDelayMinutes(schedulePrefs.customUploadDelayMinutes().get())
+        } else {
+            null
+        }
         // Source filters should apply for either favourite or pinned sources — a user who
         // only pins sources from Browse (without also marking them "favourite" here) still
-        // expects "show only my sources" / "filter by availability" to work.
+        // expects "show only my sources" to work.
         val configuredSources = favoriteIds + pinnedSources
 
         // Per-entry: the actual favourite/pinned source ids that carry *this specific* anime,
@@ -181,6 +191,7 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         // (pinned sources take priority over plain favourites), instead of one global delay
         // applied to every unrelated entry.
         fun priorityDelayFor(matchedSources: Set<String>): Long? {
+            manualDelayMinutes?.let { return it }
             if (delays.isEmpty() || matchedSources.isEmpty()) return null
             for (sourceId in pinnedSources) {
                 if (sourceId in matchedSources) delays[sourceId]?.let { return it }
@@ -195,20 +206,11 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
             // Re-apply adult-content filter in case the preference changed since last fetch.
             if (!showAdult && entry.isAdult) return@filter false
             // Source filters only apply when the user has configured favourite/pinned sources.
-            if (configuredSources.isNotEmpty() && (showOnlyFavorites || filterByAvailability)) {
+            if (configuredSources.isNotEmpty() && showOnlyFavorites) {
                 val matchedSources = matchedSourcesFor(entry)
                 // showOnlyFavoriteSources: keep entries only when this specific anime is
                 // confirmed to be on one of the user's favourite/pinned sources.
-                if (showOnlyFavorites && matchedSources.isEmpty()) return@filter false
-                // filterBySourceAvailability: keep entries only once the matched source's
-                // learned delay says the episode should actually be up by now. Sources with
-                // no learned delay yet are treated as available immediately at air time
-                // (delay 0) rather than excluded outright, since we cannot yet know better.
-                if (filterByAvailability) {
-                    if (matchedSources.isEmpty()) return@filter false
-                    val delay = priorityDelayFor(matchedSources) ?: 0L
-                    if (nowEpoch < entry.airingAt + delay * 60) return@filter false
-                }
+                if (matchedSources.isEmpty()) return@filter false
             }
             true
         }
@@ -232,6 +234,7 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
                 weekEndDate = weekEnd,
                 titleLanguage = titleLang,
                 sourceDelays = delays,
+                manualDelayMinutes = manualDelayMinutes,
                 favoriteSourceIds = favoriteIds,
                 pinnedSourceIds = pinnedSources,
                 autoAddFromPinnedSources = autoAdd,
@@ -313,6 +316,7 @@ class AiringScheduleScreenModel : StateScreenModel<AiringScheduleScreenModel.Sta
         val error: String? = null,
         val titleLanguage: SchedulePreferences.TitleLanguage = SchedulePreferences.TitleLanguage.USER_PREFERRED,
         val sourceDelays: Map<String, Long> = emptyMap(),
+        val manualDelayMinutes: Long? = null,
         val favoriteSourceIds: Set<String> = emptySet(),
         val pinnedSourceIds: Set<String> = emptySet(),
         val autoAddFromPinnedSources: Boolean = false,

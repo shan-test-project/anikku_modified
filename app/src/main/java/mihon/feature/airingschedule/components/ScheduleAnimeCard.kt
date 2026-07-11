@@ -56,6 +56,7 @@ fun ScheduleAnimeCard(
     entry: AiringScheduleEntry,
     titleLanguage: SchedulePreferences.TitleLanguage,
     sourceDelays: Map<String, Long>,
+    manualDelayMinutes: Long?,
     favoriteSourceIds: Set<String>,
     pinnedSourceIds: Set<String>,
     autoAddFromPinnedSources: Boolean,
@@ -75,20 +76,25 @@ fun ScheduleAnimeCard(
         .atZone(zone)
         .format(timeFormatter12h)
 
-    val priorityDelay: Long? = remember(sourceDelays, pinnedSourceIds, favoriteSourceIds) {
-        pinnedSourceIds.firstNotNullOfOrNull { sourceDelays[it] }
+    // A user-supplied custom delay (Refresh interval → Custom) overrides the auto-learned
+    // per-source delay when computing the expected upload time and countdown.
+    val effectiveDelay: Long? = remember(manualDelayMinutes, sourceDelays, pinnedSourceIds, favoriteSourceIds) {
+        manualDelayMinutes
+            ?: pinnedSourceIds.firstNotNullOfOrNull { sourceDelays[it] }
             ?: favoriteSourceIds.firstNotNullOfOrNull { sourceDelays[it] }
     }
 
-    val expectedUploadTime: String? = priorityDelay?.let {
-        val adjusted = UploadDelayTracker.adjustedAirTime(entry.airingAt, it)
-        Instant.ofEpochSecond(adjusted).atZone(zone).format(timeFormatter12h)
+    val adjustedAiringAt = effectiveDelay?.let { UploadDelayTracker.adjustedAirTime(entry.airingAt, it) }
+        ?: entry.airingAt
+
+    val expectedUploadTime: String? = effectiveDelay?.let {
+        Instant.ofEpochSecond(adjustedAiringAt).atZone(zone).format(timeFormatter12h)
     }
 
-    var countdown by remember { mutableStateOf(formatCountdown(entry.airingAt)) }
-    LaunchedEffect(entry.airingAt) {
-        while (!entry.hasAired()) {
-            countdown = formatCountdown(entry.airingAt)
+    var countdown by remember(adjustedAiringAt) { mutableStateOf(formatCountdown(adjustedAiringAt)) }
+    LaunchedEffect(adjustedAiringAt) {
+        while (formatCountdown(adjustedAiringAt) != null) {
+            countdown = formatCountdown(adjustedAiringAt)
             delay(60_000L)
         }
         countdown = null

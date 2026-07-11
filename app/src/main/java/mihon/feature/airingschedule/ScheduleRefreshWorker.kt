@@ -138,7 +138,13 @@ class ScheduleRefreshWorker(
 
         fun schedule(context: Context, interval: SchedulePreferences.UploadDelayInterval) {
             val wm = WorkManager.getInstance(context)
-            if (interval == SchedulePreferences.UploadDelayInterval.NEVER) {
+            // NEVER: user wants no background refresh at all. CUSTOM: the user supplies a fixed
+            // manual delay instead of an auto-learned one, so there is nothing for this worker
+            // to learn — cancel any existing periodic job rather than scheduling one.
+            if (
+                interval == SchedulePreferences.UploadDelayInterval.NEVER ||
+                interval == SchedulePreferences.UploadDelayInterval.CUSTOM
+            ) {
                 wm.cancelUniqueWork(WORK_NAME)
                 return
             }
@@ -148,7 +154,9 @@ class ScheduleRefreshWorker(
                 SchedulePreferences.UploadDelayInterval.TWO_HOURS -> 120L
                 SchedulePreferences.UploadDelayInterval.SIX_HOURS -> 360L
                 SchedulePreferences.UploadDelayInterval.TWELVE_HOURS -> 720L
-                SchedulePreferences.UploadDelayInterval.NEVER -> return
+                SchedulePreferences.UploadDelayInterval.NEVER,
+                SchedulePreferences.UploadDelayInterval.CUSTOM,
+                -> return
             }
             val request = PeriodicWorkRequestBuilder<ScheduleRefreshWorker>(minutes, TimeUnit.MINUTES)
                 .setConstraints(
