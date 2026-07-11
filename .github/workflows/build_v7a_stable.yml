@@ -13,7 +13,10 @@ name: Build v7a (stable)
 on:
   push:
     tags:
-      - v7a-stable*
+      # Deliberately does NOT start with "v7a" or "v" so it can't also be matched by
+      # build_v7a_unsigned.yml's "v7a*" trigger or build_release.yml's "v*" trigger, which
+      # would otherwise race to create/overwrite the same GitHub release.
+      - stable-v7a*
   workflow_dispatch:
 
 concurrency:
@@ -48,7 +51,7 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             version_tag=$(echo "${GITHUB_REF/refs\/tags\//}" | sed -r 's/[-\/]+/_/g')
           else
-            version_tag="v7a_stable_$(date +%Y%m%d%H%M%S)"
+            version_tag="stable_v7a_$(date +%Y%m%d%H%M%S)"
           fi
           echo "VERSION_TAG=$version_tag" >> $GITHUB_OUTPUT
 
@@ -102,7 +105,7 @@ jobs:
           retention-days: 30
 
       - name: Create release
-        if: startsWith(github.ref, 'refs/tags/v7a-stable')
+        if: startsWith(github.ref, 'refs/tags/stable-v7a')
         uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2.3.3
         with:
           tag_name: ${{ steps.get_tag.outputs.VERSION_TAG }}
